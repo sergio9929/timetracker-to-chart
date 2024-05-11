@@ -61,9 +61,16 @@ function getIntermediateDates(startDate: Date, endDate: Date): Date[] {
     return intermediateDates;
 }
 
-const handleDrop = (event: DragEvent) => {
-    event.preventDefault();
-    const file = event.dataTransfer?.files[0]; // Obtén el primer archivo soltado
+const dropZoneRef = ref<HTMLDivElement>()
+const { isOverDropZone } = useDropZone(dropZoneRef, {
+    onDrop
+})
+
+
+function onDrop(files: File[] | null) {
+    if (!files) return
+
+    const file = files[0]; // Obtén el primer archivo soltado
 
     if (file?.name.endsWith('.timetracker')) {
         const reader = new FileReader();
@@ -79,7 +86,7 @@ const handleDrop = (event: DragEvent) => {
     } else {
         console.warn('El archivo no es un JSON válido.');
     }
-};
+}
 
 function transformData(json: Record<string, any>): TimeData[] {
     const time_unit: TimeUnit = 'h';
@@ -127,10 +134,11 @@ function transformDuration(duration: number, time_unit: TimeUnit = 'h'): number 
 </script>
 
 <template>
-    <div @dragover.prevent @drop="handleDrop">
-        <div v-if="!data" ref="dropZone" class="drop-zone">
-            Arrastra y suelta un archivo JSON aquí
-        </div>
+    <div @dragover.prevent ref="dropZoneRef" class="drop-zone" :class="{ 'drop-zone--over': isOverDropZone }"
+        v-auto-animate>
+        <p v-if="!data" ref="dropZone" class="drop-zone__message">
+            Arrastra y suelta un archivo <code>.timetracker</code> aquí
+        </p>
         <VisXYContainer v-else height="100vh" width="100%" :data="data"
             :margin="{ top: 100, right: 50, bottom: 50, left: 50 }" class="chart">
             <VisBulletLegend :items="[{ name: `Total: ${formatDuration(total)}`, color }]" labelFontSize="16px"
@@ -151,6 +159,12 @@ function transformDuration(duration: number, time_unit: TimeUnit = 'h'): number 
 </template>
 
 <style scoped>
+code {
+    background-color: hsl(0 0 100% / 20%);
+    border-radius: .5em;
+    padding: .2em;
+}
+
 .chart {
     --vis-axis-grid-color: hsl(0 0 100% / 20%);
     --vis-legend-label-color: white;
@@ -180,5 +194,10 @@ function transformDuration(duration: number, time_unit: TimeUnit = 'h'): number 
     display: flex;
     justify-content: center;
     align-items: center;
+    transition: background-color .2s;
+}
+
+.drop-zone--over {
+    background-color: hsl(0 0 100% / 20%);
 }
 </style>
