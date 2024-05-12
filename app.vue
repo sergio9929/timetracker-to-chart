@@ -50,7 +50,7 @@ onChange((files) => onDrop(files))
 function onDrop(files: File[] | FileList | null) {
     if (!files) return
 
-    const file = files[0]; // Obtén el primer archivo soltado
+    const file = files[0]
 
     if (file?.name.endsWith('.timetracker')) {
         const reader = new FileReader();
@@ -61,12 +61,12 @@ function onDrop(files: File[] | FileList | null) {
                 data.value = timetracker.sessions
                 total.value = timetracker.total
             } catch (error) {
-                console.error('Error al analizar el archivo JSON:', error);
+                console.error('Error analizing the JSON file:', error)
             }
         };
-        reader.readAsText(file);
+        reader.readAsText(file)
     } else {
-        console.warn('El archivo no es un JSON válido.');
+        console.warn('The file is not a valid JSON.')
     }
 
     reset()
@@ -98,7 +98,7 @@ function changeView() {
             </div>
         </div>
         <p v-else-if="loading" class="loading-screen">
-            Cargando...
+            Loading...
         </p>
         <div v-else class="chart">
             <div class="chart__buttons">
@@ -114,10 +114,10 @@ function changeView() {
                 <VisBulletLegend :items="legendItems" labelFontSize="16px" class="chart__legend" />
                 <VisStackedBar :x="x" :y="y" :dataStep="dayInMiliseconds" :color="color" :roundedCorners="10" :id="id"
                     :width="100" />
-                <VisAxis type="x" :tickFormat="formatDate" :tickValues="displayAllDates && tickValues" label="Fecha"
+                <VisAxis type="x" :tickFormat="formatDate" :tickValues="displayAllDates && tickValues" label="Date"
                     :labelColor="color" :tickTextColor="color" :labelMargin="displayAllDates ? 100 : 50" :tickPadding="10"
                     :tickTextAlign="displayAllDates && 'right'" :tickTextWidth="100" :attributes="xAxisLabelAttributes" />
-                <VisAxis type="y" :tickFormat="formatDuration" label="Tiempo" :labelColor="color" :tickTextColor="color"
+                <VisAxis type="y" :tickFormat="formatDuration" label="Duration" :labelColor="color" :tickTextColor="color"
                     :labelMargin="50" />
                 <VisCrosshair :template="tooltipTemplate" :x="x" :yStacked="[y, undefined]" color="#000000" />
                 <VisTooltip horizontalPlacement="center" :attributes="tooltipAttributes" />
