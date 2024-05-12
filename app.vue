@@ -91,7 +91,7 @@ function changeView() {
             <button class="button button--home home__button" @click="open()">Click here to find it</button>
             <div class="home__extension">
                 <p class="home__link-wrapper"><a
-                        href="https://marketplace.visualstudio.com/items?itemName=Blade.timetracker"
+                        href="https://marketplace.visualstudio.com/items?itemName=Blade.timetracker" target="_blank"
                         class="home__link">Install the timetracker VS Code extension</a></p>
                 <p class="home__info">The extension creates a <code>.timetracker</code> file to store your time tracking
                     data</p>
