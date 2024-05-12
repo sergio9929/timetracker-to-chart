@@ -23,7 +23,7 @@ jobs:
           cache: "pnpm"
       # Pick your own package manager and build script
       - run: pnpm install
-      - run: pnpm create nuxt build --preset github_pages
+      - run: pnpm dlx nuxt build --preset github_pages
         env:
           NUXT_APP_BASE_URL: ${{ vars.NUXT_APP_BASE_URL  }}
 
