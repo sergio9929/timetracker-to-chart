@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import {
+    Axis,
+    Tooltip
+} from '@unovis/ts';
+import {
     VisAxis,
     VisBulletLegend,
     VisCrosshair,
@@ -8,66 +12,42 @@ import {
     VisXYContainer,
     VisXYLabels
 } from '@unovis/vue';
-export type TimeData = {
-    date: Date;
-    time_unit: string;
-    duration: number;
-}
-export type TimeUnit = 's' | 'm' | 'h';
 
-const data = ref<TimeData[] | undefined>(undefined);
+const color = 'var(--primary-color)';
+const dayInMiliseconds = 24 * 60 * 60 * 1000;
+
+const data = ref<Session[] | undefined>(undefined);
 const total = ref(0)
+const displayAllDates = ref(false)
+const loading = ref(false)
+const dropZoneRef = ref<HTMLDivElement>()
 
-const dayInMiliseconds = 86400000;
-const formatDate = (date: Date) => new Date(date).toISOString().split('T')[0];
-const formatDuration = (duration: number) => {
-    const hours = Math.floor(duration);
-    const minutes = Math.round((duration % 1) * 60);
-
-    if (hours === 0) {
-        return `${minutes}min`;
-    }
-    if (minutes === 0) {
-        return `${hours}h`;
-    }
-    return `${hours}h ${minutes}min`;
-};
-
-const x = (d: TimeData) => d.date;
-const y = (d: TimeData) => d.duration;
-const id = (d: TimeData) => d.date;
-const getLabel = (d: TimeData) => formatDuration(d.duration);
-
-const color = '#ffffff';
+const { isOverDropZone } = useDropZone(dropZoneRef, { onDrop })
+const { onChange, open, reset } = useFileDialog({ accept: '.timetracker', multiple: false })
 
 const tickValues = computed(() => data.value ? getIntermediateDates(
     new Date(data.value[0].date),
     new Date(data.value[data.value.length - 1].date)
-) : []);
-
-function tooltipTemplate(d: TimeData): string {
-    return `<div><b>${formatDate(d.date)}</b>: ${formatDuration(d.duration)}</div>`
-}
-
-function getIntermediateDates(startDate: Date, endDate: Date): Date[] {
-    const intermediateDates: Date[] = [];
-    const currentDate = new Date(startDate);
-
-    while (currentDate <= endDate) {
-        intermediateDates.push(new Date(currentDate));
-        currentDate.setDate(currentDate.getDate() + 1);
+) : [])
+const xAxisLabelAttributes = computed(() => ({
+    [Axis.selectors.tick]: {
+        class: (d: Session['duration']) => `${Axis.selectors.tick} tick ${displayAllDates.value ? ' chart__tick--x' : ''}`
     }
+}))
+const legendItems = computed(() => [{ name: `Total: ${formatDuration(total.value)}`, color }])
 
-    return intermediateDates;
+const x = (d: Session) => d.date;
+const y = (d: Session) => d.duration;
+const id = (d: Session) => d.date;
+const getLabel = (d: Session) => formatDuration(d.duration);
+const tooltipTemplate = (d: Session) => `<div><b>${formatDate(d.date)}</b>: ${formatDuration(d.duration)}</div>`
+const yAxisLabelY = (d: Session) => Math.max(d.duration - .5, d.duration / 2)
+const tooltipAttributes = {
+    class: `${Tooltip.selectors.tooltip} chart__tooltip`
 }
 
-const dropZoneRef = ref<HTMLDivElement>()
-const { isOverDropZone } = useDropZone(dropZoneRef, {
-    onDrop
-})
-
-
-function onDrop(files: File[] | null) {
+onChange((files) => onDrop(files))
+function onDrop(files: File[] | FileList | null) {
     if (!files) return
 
     const file = files[0]; // Obtén el primer archivo soltado
@@ -77,7 +57,9 @@ function onDrop(files: File[] | null) {
         reader.onload = (event) => {
             try {
                 const json = JSON.parse(event.target?.result as string)
-                data.value = transformData(json);
+                const timetracker = transformData(json)
+                data.value = timetracker.sessions
+                total.value = timetracker.total
             } catch (error) {
                 console.error('Error al analizar el archivo JSON:', error);
             }
@@ -86,105 +68,80 @@ function onDrop(files: File[] | null) {
     } else {
         console.warn('El archivo no es un JSON válido.');
     }
+
+    reset()
 }
 
-function transformData(json: Record<string, any>): TimeData[] {
-    const time_unit: TimeUnit = 'h';
-    const groupedObject: Record<string, any> = {}
+// rerender chart
+function changeView() {
+    loading.value = true
+    displayAllDates.value = !displayAllDates.value
 
-    if (json.sessions?.length) {
-        total.value = transformDuration(json.total, time_unit)
-        for (const item of json.sessions) {
-            var inputDate = new Date(item.begin);
-            inputDate.setHours(0, 0, 0, 0)
-
-            const date = inputDate.toISOString()
-            if (!groupedObject[date]) {
-                groupedObject[date] = []
-            }
-            groupedObject[date].push(item)
-        }
-    }
-
-    const finalArray = Object.entries(groupedObject).map(([date, item]) => {
-        const duration = item?.reduce((acc: number, e: any) => acc + transformDuration(e.duration, time_unit), 0)
-
-        return {
-            date: new Date(date),
-            time_unit,
-            duration: Math.round(duration * 100) / 100
-        }
-    })
-
-    return finalArray
-}
-
-function transformDuration(duration: number, time_unit: TimeUnit = 'h'): number {
-    switch (time_unit) {
-        case 's':
-            return duration
-        case 'm':
-            return duration / 60
-        case 'h':
-            return duration / 60 / 60
-        default:
-            return 0
-    }
+    setTimeout(() => {
+        loading.value = false
+    }, 100)
 }
 </script>
 
 <template>
-    <div @dragover.prevent ref="dropZoneRef" class="drop-zone" :class="{ 'drop-zone--over': isOverDropZone }"
-        v-auto-animate>
-        <p v-if="!data" ref="dropZone" class="drop-zone__message">
-            Arrastra y suelta un archivo <code>.timetracker</code> aquí
+    <div ref="dropZoneRef" class="drop-zone" :class="{ 'drop-zone--over': isOverDropZone }" v-auto-animate>
+        <div v-if="!data?.length" class="home">
+            <p>Drag and drop a <code>.timetracker</code> file </p>
+            <p class="home__or">or</p>
+            <button class="button button--home home__button" @click="open()">Click here to find it</button>
+            <div class="home__extension">
+                <p class="home__link-wrapper"><a
+                        href="https://marketplace.visualstudio.com/items?itemName=Blade.timetracker"
+                        class="home__link">Install the timetracker VS Code extension</a></p>
+                <p class="home__info">The extension creates a <code>.timetracker</code> file to store your time tracking
+                    data</p>
+            </div>
+        </div>
+        <p v-else-if="loading" class="loading-screen">
+            Cargando...
         </p>
-        <VisXYContainer v-else height="100vh" width="100%" :data="data"
-            :margin="{ top: 100, right: 50, bottom: 50, left: 50 }" class="chart">
-            <VisBulletLegend :items="[{ name: `Total: ${formatDuration(total)}`, color }]" labelFontSize="16px"
-                class="legend" />
-            <VisStackedBar :x="x" :y="y" :dataStep="dayInMiliseconds" :color="color" :roundedCorners="10" :id="id" />
-            <VisAxis type="x" tickTextFitMode="trim" tickTextTrimType="end" :tickFormat="formatDate"
-                :tickValues="tickValues" label="Fecha" :labelColor="color" :tickTextColor="color" :labelMargin="50" />
-            <VisAxis type="y" :tickFormat="formatDuration" label="Tiempo" :labelColor="color" :tickTextColor="color"
-                :labelMargin="50" />
-            <VisCrosshair :template="tooltipTemplate" :x="x" :yStacked="[y, undefined]" color="#000000" />
-            <VisTooltip horizontalPlacement="center" :attributes="{
-                class: `css-1sev1n1-tooltip sample-tooltip`
-            }" />
-            <VisXYLabels :label="getLabel" color="#000000" :backgroundColor="color"
-                :y="(d: any) => Math.max(d.duration - .5, d.duration / 2)" :x="x" :labelFontSize="16" />
-        </VisXYContainer>
+        <div v-else class="chart">
+            <div class="chart__buttons">
+                <button class="button button--open-file" @click="open()">
+                    Open file
+                </button>
+                <button class="button button--chnage-view" @click="changeView">
+                    Dates: {{ displayAllDates ? 'All' : 'Reduced' }}
+                </button>
+            </div>
+            <VisXYContainer height="100vh" width="100%" :data="data"
+                :margin="{ top: 100, right: 50, bottom: 50, left: 50 }">
+                <VisBulletLegend :items="legendItems" labelFontSize="16px" class="chart__legend" />
+                <VisStackedBar :x="x" :y="y" :dataStep="dayInMiliseconds" :color="color" :roundedCorners="10" :id="id"
+                    :width="100" />
+                <VisAxis type="x" :tickFormat="formatDate" :tickValues="displayAllDates && tickValues" label="Fecha"
+                    :labelColor="color" :tickTextColor="color" :labelMargin="displayAllDates ? 100 : 50" :tickPadding="10"
+                    :tickTextAlign="displayAllDates && 'right'" :tickTextWidth="100" :attributes="xAxisLabelAttributes" />
+                <VisAxis type="y" :tickFormat="formatDuration" label="Tiempo" :labelColor="color" :tickTextColor="color"
+                    :labelMargin="50" />
+                <VisCrosshair :template="tooltipTemplate" :x="x" :yStacked="[y, undefined]" color="#000000" />
+                <VisTooltip horizontalPlacement="center" :attributes="tooltipAttributes" />
+                <VisXYLabels :label="getLabel" color="#000000" :backgroundColor="color" :y="yAxisLabelY" :x="x"
+                    :labelFontSize="16" />
+            </VisXYContainer>
+        </div>
     </div>
 </template>
 
 <style scoped>
 code {
-    background-color: hsl(0 0 100% / 20%);
+    background-color: var(--transparent-color);
     border-radius: .5em;
     padding: .2em;
+    font-family: 'Courier New', Courier, monospace;
+    font: inherit;
 }
 
-.chart {
-    --vis-axis-grid-color: hsl(0 0 100% / 20%);
-    --vis-legend-label-color: white;
-    --vis-legend-item-spacing: 0;
-}
-
-.legend {
-    text-align: center;
-    position: fixed;
-    top: 40px;
-    left: 0;
-    right: 0;
-}
-
-:deep(.sample-tooltip) {
-    background-color: black;
+.button {
     border-radius: .5em;
-    color: white;
-    border: 1px solid hsl(0 0 100% / 20%);
-    box-shadow: 0 0 .5em hsl(0 0 100% / 20%);
+    padding: .5em 1em;
+    background-color: var(--primary-color);
+    color: var(--background-color);
 }
 
 .drop-zone {
@@ -198,6 +155,85 @@ code {
 }
 
 .drop-zone--over {
-    background-color: hsl(0 0 100% / 20%);
+    background-color: var(--transparent-color);
+}
+
+.home {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    text-align: center;
+}
+
+.home__or {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    line-height: 1;
+    gap: .5em;
+}
+
+.home__or::before,
+.home__or::after {
+    content: '';
+    display: block;
+    border: 1px solid var(--transparent-color);
+    width: 100%;
+}
+
+.home__extension {
+    position: fixed;
+    bottom: 50px;
+}
+
+.home__link-wrapper {
+    margin-bottom: .5em;
+}
+
+.home__link {
+    color: inherit;
+}
+
+.home__info {
+    opacity: .6;
+}
+
+.chart {
+    --vis-axis-grid-color: var(--transparent-color);
+    --vis-legend-label-color: var(--primary-color);
+    --vis-legend-item-spacing: 0;
+
+    width: 100%;
+}
+
+.chart__buttons {
+    position: fixed;
+    left: 25px;
+    top: 25px;
+    z-index: 1;
+    display: flex;
+    gap: .5rem;
+}
+
+.chart__legend {
+    text-align: center;
+    position: fixed;
+    top: 40px;
+    left: 0;
+    right: 0;
+}
+
+:deep(.chart__tooltip) {
+    background-color: black;
+    border-radius: .5em;
+    color: white;
+    border: 1px solid var(--transparent-color);
+    box-shadow: 0 0 .5em var(--transparent-color);
+}
+
+:deep(.chart__tick--x) text {
+    transform: translateX(-.6%) rotate(-50deg);
 }
 </style>
